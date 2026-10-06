@@ -12,7 +12,8 @@ body {
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -131,7 +132,7 @@ body {
   height: 100dvh;
 }
 
-.list {
+#media-list {
   height: 100dvh;
 
   display: flex;
@@ -157,7 +158,7 @@ body {
 }
 
 /* hide scroll bar */
-.list::-webkit-scrollbar {
+#media-list::-webkit-scrollbar {
   display: none;
 }
 
@@ -173,11 +174,11 @@ body {
   scroll-snap-stop: always;
 }
 
-/* 
-  The styling below is only for the decoration of this demo, 
+/*
+  The styling below is only for the decoration of this demo,
   it has no impact on scrolling or scroll behavior
 */
-.list {
+#media-list {
   list-style: none;
   padding: 0;
 }

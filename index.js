@@ -1,3 +1,9 @@
+// @ts-check
+/// <reference lib="esnext" />
+/// <reference types="./showDirectoryPicker.d.ts" />
+
+"use strict";
+
 /**
  * @param {FileSystemDirectoryHandle} directoryHandle
  * @returns {AsyncIterable<FileSystemFileHandle>}
@@ -43,12 +49,26 @@ function shuffle(array) {
   return array;
 }
 
+/**
+ * @param {string} id
+ */
+function getElementByIdStrict(id) {
+  const elem = document.getElementById(id);
+  if (!elem) throw new Error(`expected element with id: ${id}`);
+  return elem;
+}
+
+/** @type {number | undefined} */
 let toastTimeout;
 
+/**
+ * @param {string} message
+ * @param {number} duration
+ */
 function toast(message, duration = 3000) {
   clearTimeout(toastTimeout);
 
-  const element = document.getElementById("toast");
+  const element = getElementByIdStrict("toast");
   element.textContent = message;
   element.showPopover();
 
@@ -57,11 +77,8 @@ function toast(message, duration = 3000) {
   }, duration);
 }
 
-document
-  .getElementById("toggle-fullscreen")
+getElementByIdStrict("toggle-fullscreen")
   .addEventListener("click", async () => {
-    menu.hidePopover();
-
     if (document.fullscreenElement) {
       await document.exitFullscreen();
     } else {
@@ -69,14 +86,11 @@ document
     }
   });
 
-/** @type {Feed} */
+/** @type {Feed | undefined} */
 let feed;
 
-document
-  .getElementById("open-folder")
+getElementByIdStrict("open-folder")
   .addEventListener("click", async () => {
-    menu.hidePopover();
-
     if (typeof window.showDirectoryPicker !== "function") {
       alert("Your browser does not support showDirectoryPicker()");
       return;
@@ -104,18 +118,21 @@ document
     feed?.dispose();
 
     feed = new Feed({
-      domList: document.querySelector(".list"),
+      domList: getElementByIdStrict("media-list"),
       handles: shuffle(videoHandles),
       listenerProgress: (progress) => {
+        /** @type {HTMLElement | null} */
         const element = document.querySelector(".progress > .fill");
-        element.style.width = `${100 * progress}%`;
+        if (element) {
+          element.style.width = `${100 * progress}%`;
+        }
       },
     });
   });
 
 window
   .visualViewport
-  .addEventListener("resize", () => {
+  ?.addEventListener("resize", () => {
     feed?.handleResize();
   });
 
@@ -126,7 +143,7 @@ class Feed {
   #handles;
   /** @type {IntersectionObserver} */
   #observer;
-  /** @type {(progress: number) => {}} */
+  /** @type {(progress: number) => void} */
   #listenerProgress;
 
   /** @type {Element[]} */
@@ -185,8 +202,10 @@ class Feed {
 
     for (const item of drop) {
       const video = item.querySelector("video");
-      URL.revokeObjectURL(video.src);
-      video.remove();
+      if (video) {
+        URL.revokeObjectURL(video.src);
+        video.remove();
+      }
     }
 
     for (const item of hydrate) {
@@ -213,9 +232,10 @@ class Feed {
     }
 
     {
-      this.#listenerProgress?.(
-        this.#mediaAt(target)?.currentTime / this.#mediaAt(target)?.duration,
-      );
+      const media = this.#mediaAt(target);
+      if (media) {
+        this.#listenerProgress?.(media.currentTime / media.duration);
+      }
     }
 
     if (this.#playing) {
@@ -269,7 +289,20 @@ class Feed {
     return item;
   }
 
-  #initialize() {
+  /**
+   * @param {{
+   *  domList: Element,
+   *  handles: FileSystemFileHandle[],
+   *  listenerProgress: (progress: number) => void
+   * }} params
+   */
+  constructor({ domList, handles, listenerProgress }) {
+    this.#domList = domList;
+    this.#handles = handles;
+    this.#listenerProgress = listenerProgress;
+
+    // Initialization
+
     this.#domItems = this.#handles.map(() => this.#createItemDOM());
 
     this.#domList.replaceChildren(...this.#domItems);
@@ -288,20 +321,5 @@ class Feed {
     this.#domList.addEventListener("click", () => {
       this.#onListClick();
     });
-  }
-
-  /**
-   * @param {{
-   *  domList: Element,
-   *  handles: FileSystemFileHandle[],
-   *  listenerProgress: (progress: number) => {}
-   * }}
-   */
-  constructor({ domList, handles, listenerProgress }) {
-    this.#domList = domList;
-    this.#handles = handles;
-    this.#listenerProgress = listenerProgress;
-
-    this.#initialize();
   }
 }

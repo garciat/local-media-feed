@@ -172,76 +172,151 @@ class Feed {
 
   /**
    * @param {number} index
-   * @returns {HTMLVideoElement | null}
+   */
+  #mediaKindOf(index) {
+    const fh = this.#handles[index];
+    if (/\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name)) {
+      return /** @type {const} */ ("video");
+    } else {
+      throw new Error(`unexpected media type: ${fh}`);
+    }
+  }
+
+  /**
+   * @param {number} index
+   */
+  async #mountMedia(index) {
+    switch (this.#mediaKindOf(index)) {
+      case "video":
+        {
+          const file = await this.#handles[index].getFile();
+
+          const video = document.createElement("video");
+          video.src = URL.createObjectURL(file);
+          video.loop = true;
+
+          const update = () => {
+            this.#listenerProgress?.(video.currentTime / video.duration);
+            if (!video.paused) {
+              video.requestVideoFrameCallback(update);
+            }
+          };
+
+          video.addEventListener("play", () => {
+            update();
+          });
+
+          const item = this.#domItems[index];
+          item.appendChild(video);
+        }
+        break;
+    }
+  }
+
+  /**
+   * @param {number} index
+   */
+  #unmountMedia(index) {
+    switch (this.#mediaKindOf(index)) {
+      case "video":
+        {
+          const video = this.#domItems[index].querySelector("video");
+          if (video) {
+            URL.revokeObjectURL(video.src);
+            video.remove();
+          }
+        }
+        break;
+    }
+  }
+
+  /**
+   * @param {number} index
    */
   #mediaAt(index) {
-    return this.#domItems[index]?.querySelector("video");
+    switch (this.#mediaKindOf(index)) {
+      case "video":
+        return this.#domItems[index]?.querySelector("video");
+    }
+  }
+
+  /**
+   * @param {number} index
+   */
+  #getMediaProgress(index) {
+    switch (this.#mediaKindOf(index)) {
+      case "video": {
+        const video = this.#domItems[index]?.querySelector("video");
+        if (video) {
+          return video.currentTime / video.duration;
+        } else {
+          return 0;
+        }
+      }
+    }
+  }
+
+  /**
+   * @param {number} index
+   */
+  #pauseMedia(index) {
+    switch (this.#mediaKindOf(index)) {
+      case "video": {
+        const video = this.#domItems[index]?.querySelector("video");
+        return video?.pause();
+      }
+    }
+  }
+
+  /**
+   * @param {number} index
+   */
+  #resumeMedia(index) {
+    switch (this.#mediaKindOf(index)) {
+      case "video": {
+        const video = this.#domItems[index]?.querySelector("video");
+        return video?.play();
+      }
+    }
+  }
+
+  /**
+   * @param {number} index
+   */
+  #hasMountedMedia(index) {
+    return Boolean(this.#mediaAt(index));
   }
 
   /**
    * @param {number} target
    */
   async #onActivateItemIndex(target) {
-    // console.log(`onActivateItemIndex(${target})`);
-
     const prev = new Set(
-      Array.from(this.#getRange(this.#current))
-        .map((i) => this.#domItems[i])
-        .filter((item) => Boolean(item.querySelector("video"))),
+      this.#getRange(this.#current)
+        .filter((index) => this.#hasMountedMedia(index)),
     );
-
     const next = new Set(
-      Array.from(this.#getRange(target))
-        .map((i) => this.#domItems[i]),
+      this.#getRange(target),
     );
 
-    /** @type {Set<Element>} */
     const drop = prev.difference(next);
-    /** @type {Set<Element>} */
     const hydrate = next.difference(prev);
 
-    for (const item of drop) {
-      const video = item.querySelector("video");
-      if (video) {
-        URL.revokeObjectURL(video.src);
-        video.remove();
-      }
+    for (const index of drop) {
+      this.#unmountMedia(index);
     }
 
-    for (const item of hydrate) {
-      const index = this.#domItems.indexOf(item);
+    await Promise.all(
+      Array.from(hydrate)
+        .map((index) => this.#mountMedia(index)),
+    );
 
-      const file = await this.#handles[index].getFile();
-
-      const video = document.createElement("video");
-      video.src = URL.createObjectURL(file);
-      video.loop = true;
-
-      const update = () => {
-        this.#listenerProgress?.(video.currentTime / video.duration);
-        if (!video.paused) {
-          video.requestVideoFrameCallback(update);
-        }
-      };
-
-      video.addEventListener("play", () => {
-        update();
-      });
-
-      item.appendChild(video);
-    }
-
-    {
-      const media = this.#mediaAt(target);
-      if (media) {
-        this.#listenerProgress?.(media.currentTime / media.duration);
-      }
-    }
+    this.#listenerProgress?.(this.#getMediaProgress(target));
 
     if (this.#playing) {
-      this.#mediaAt(this.#current)?.pause();
+      this.#pauseMedia(this.#current);
 
-      this.#mediaAt(target)?.play();
+      await this.#resumeMedia(target);
     }
 
     this.#current = target;

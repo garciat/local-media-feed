@@ -193,7 +193,8 @@ body {
   align-items: center;
 }
 
-.item video {
+.item video,
+.item img {
   display: block;
   width: 100%;
   height: 100%;

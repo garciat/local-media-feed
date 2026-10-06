@@ -59,7 +59,7 @@ function getElementByIdStrict(id) {
 }
 
 /**
- * @typedef {"video"} MediaKind
+ * @typedef {"video"|"image"} MediaKind
  */
 
 /**
@@ -67,8 +67,10 @@ function getElementByIdStrict(id) {
  * @returns {MediaKind | null}
  */
 function getMediaKind(fh) {
-  if (/\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name)) {
-    return /** @type {const} */ ("video");
+  if (/\.(?:mp4|webm|ogv|ogg)$/i.test(fh.name)) {
+    return "video";
+  } else if (/\.(?:jpg|jpeg|png|gif|svg|webp|avif|bmp)$/i.test(fh.name)) {
+    return "image";
   } else {
     return null;
   }
@@ -241,6 +243,15 @@ class Feed {
         const item = this.#domItems[index];
         item.appendChild(video);
       },
+      image: async () => {
+        const file = await this.#handles[index].getFile();
+
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+
+        const item = this.#domItems[index];
+        item.appendChild(img);
+      },
     });
   }
 
@@ -256,16 +267,26 @@ class Feed {
           video.remove();
         }
       },
+      image: () => {
+        const img = this.#domItems[index].querySelector("img");
+        if (img) {
+          URL.revokeObjectURL(img.src);
+          img.remove();
+        }
+      },
     });
   }
 
   /**
    * @param {number} index
    */
-  #mediaAt(index) {
+  #hasMountedMedia(index) {
     return this.#visitMedia(index, {
       video: () => {
-        return this.#domItems[index]?.querySelector("video");
+        return this.#domItems[index]?.querySelector("video") !== null;
+      },
+      image: () => {
+        return this.#domItems[index]?.querySelector("img") !== null;
       },
     });
   }
@@ -283,6 +304,9 @@ class Feed {
           return 0;
         }
       },
+      image: () => {
+        return 0;
+      },
     });
   }
 
@@ -295,6 +319,7 @@ class Feed {
         const video = this.#domItems[index]?.querySelector("video");
         return video?.pause();
       },
+      image: () => {},
     });
   }
 
@@ -307,14 +332,8 @@ class Feed {
         const video = this.#domItems[index]?.querySelector("video");
         return await video?.play();
       },
+      image: async () => {},
     });
-  }
-
-  /**
-   * @param {number} index
-   */
-  #hasMountedMedia(index) {
-    return Boolean(this.#mediaAt(index));
   }
 
   /**

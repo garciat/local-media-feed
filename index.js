@@ -21,7 +21,16 @@ async function* findAllFiles(directoryHandle) {
 
 /**
  * @template T
- * @param {T[]} array 
+ * @param {AsyncIterable<T>} iter
+ * @returns {Promise<T[]>}
+ */
+function arrayFromAsync(iter) {
+  return Array.fromAsync(iter);
+}
+
+/**
+ * @template T
+ * @param {T[]} array
  * @returns {T[]}
  */
 function shuffle(array) {
@@ -52,7 +61,7 @@ document
   .getElementById("toggle-fullscreen")
   .addEventListener("click", async () => {
     menu.hidePopover();
-    
+
     if (document.fullscreenElement) {
       await document.exitFullscreen();
     } else {
@@ -76,29 +85,31 @@ document
     const directory = await window.showDirectoryPicker({
       id: "local-media-feed",
       mode: "read",
-      startIn: "videos"
+      startIn: "videos",
     });
 
     const t = performance.now();
 
-    const fileHandles = await Array.fromAsync(findAllFiles(directory));
+    const fileHandles = await arrayFromAsync(findAllFiles(directory));
 
-    /** @type {FileSystemFileHandle[]} */
-    const videoHandles =
-      fileHandles
-        .filter(fh => /\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name));
-    
-    toast(`Loaded ${videoHandles.length} files in ${(performance.now()-t).toFixed(0)}ms`);
+    const videoHandles = fileHandles
+      .filter((fh) => /\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name));
+
+    toast(
+      `Loaded ${videoHandles.length} files in ${
+        (performance.now() - t).toFixed(0)
+      }ms`,
+    );
 
     feed?.dispose();
 
     feed = new Feed({
-      domList: document.querySelector('.list'),
+      domList: document.querySelector(".list"),
       handles: shuffle(videoHandles),
       listenerProgress: (progress) => {
-        const element = document.querySelector('.progress > .fill');
+        const element = document.querySelector(".progress > .fill");
         element.style.width = `${100 * progress}%`;
-      }
+      },
     });
   });
 
@@ -128,11 +139,14 @@ class Feed {
   static #countKeepFront = 2;
 
   /**
-   * @param {number} center 
+   * @param {number} center
    */
   *#getRange(center) {
     const a = Math.max(0, center - Feed.#countKeepBack);
-    const b = Math.min(this.#domItems.length, 1 + center + Feed.#countKeepFront);
+    const b = Math.min(
+      this.#domItems.length,
+      1 + center + Feed.#countKeepFront,
+    );
 
     for (let i = a; i < b; i++) {
       yield i;
@@ -141,27 +155,27 @@ class Feed {
 
   /**
    * @param {number} index
-   * @returns {HTMLVideoElement}
+   * @returns {HTMLVideoElement | null}
    */
   #mediaAt(index) {
-    return this.#domItems[index]?.querySelector('video');
+    return this.#domItems[index]?.querySelector("video");
   }
 
   /**
-   * @param {number} target 
+   * @param {number} target
    */
   async #onActivateItemIndex(target) {
     // console.log(`onActivateItemIndex(${target})`);
 
     const prev = new Set(
       Array.from(this.#getRange(this.#current))
-        .map(i => this.#domItems[i])
-        .filter(item => Boolean(item.querySelector('video')))
+        .map((i) => this.#domItems[i])
+        .filter((item) => Boolean(item.querySelector("video"))),
     );
 
     const next = new Set(
       Array.from(this.#getRange(target))
-        .map(i => this.#domItems[i])
+        .map((i) => this.#domItems[i]),
     );
 
     /** @type {Set<Element>} */
@@ -170,7 +184,7 @@ class Feed {
     const hydrate = next.difference(prev);
 
     for (const item of drop) {
-      const video = item.querySelector('video');
+      const video = item.querySelector("video");
       URL.revokeObjectURL(video.src);
       video.remove();
     }
@@ -180,7 +194,7 @@ class Feed {
 
       const file = await this.#handles[index].getFile();
 
-      const video = document.createElement('video');
+      const video = document.createElement("video");
       video.src = URL.createObjectURL(file);
       video.loop = true;
 
@@ -199,7 +213,9 @@ class Feed {
     }
 
     {
-      this.#listenerProgress?.(this.#mediaAt(target)?.currentTime / this.#mediaAt(target)?.duration);
+      this.#listenerProgress?.(
+        this.#mediaAt(target)?.currentTime / this.#mediaAt(target)?.duration,
+      );
     }
 
     if (this.#playing) {
@@ -212,10 +228,10 @@ class Feed {
   }
 
   /**
-   * @param {IntersectionObserverEntry[]} entries 
+   * @param {IntersectionObserverEntry[]} entries
    */
   #onIntersectionObserved(entries) {
-    entries.forEach(entry => {
+    entries.forEach((entry) => {
       if (entry.isIntersecting) {
         const intersectingIndex = this.#domItems.indexOf(entry.target);
         this.#onActivateItemIndex(intersectingIndex);
@@ -248,7 +264,7 @@ class Feed {
   }
 
   #createItemDOM() {
-    const item = document.createElement('li');
+    const item = document.createElement("li");
     item.classList.add("item");
     return item;
   }
@@ -262,20 +278,19 @@ class Feed {
       this.#onIntersectionObserved(entries);
     }, {
       root: this.#domList,
-      threshold: 0.6
+      threshold: 0.6,
     });
 
     for (const child of this.#domItems) {
       this.#observer.observe(child);
     }
 
-    this.#domList.addEventListener('click', () => {
+    this.#domList.addEventListener("click", () => {
       this.#onListClick();
     });
   }
 
   /**
-   * 
    * @param {{
    *  domList: Element,
    *  handles: FileSystemFileHandle[],

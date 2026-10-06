@@ -58,6 +58,32 @@ function getElementByIdStrict(id) {
   return elem;
 }
 
+/**
+ * @typedef {"video"} MediaKind
+ */
+
+/**
+ * @param {FileSystemFileHandle} fh
+ * @returns {MediaKind | null}
+ */
+function getMediaKind(fh) {
+  if (/\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name)) {
+    return /** @type {const} */ ("video");
+  } else {
+    return null;
+  }
+}
+
+/**
+ * @param {FileSystemFileHandle} fh
+ * @returns {MediaKind}
+ */
+function getMediaKindStrict(fh) {
+  const kind = getMediaKind(fh);
+  if (kind === null) throw new Error(`unknown media kind for: ${fh}`);
+  return kind;
+}
+
 /** @type {number | undefined} */
 let toastTimeout;
 
@@ -104,13 +130,11 @@ getElementByIdStrict("open-folder")
 
     const t = performance.now();
 
-    const fileHandles = await arrayFromAsync(findAllFiles(directory));
-
-    const videoHandles = fileHandles
-      .filter((fh) => /\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name));
+    const fileHandles = (await arrayFromAsync(findAllFiles(directory)))
+      .filter((fh) => getMediaKind(fh) !== null);
 
     toast(
-      `Loaded ${videoHandles.length} files in ${
+      `Loaded ${fileHandles.length} files in ${
         (performance.now() - t).toFixed(0)
       }ms`,
     );
@@ -119,7 +143,7 @@ getElementByIdStrict("open-folder")
 
     feed = new Feed({
       domList: getElementByIdStrict("media-list"),
-      handles: shuffle(videoHandles),
+      handles: shuffle(fileHandles),
       listenerProgress: (progress) => {
         /** @type {HTMLElement | null} */
         const element = document.querySelector(".progress > .fill");
@@ -175,109 +199,115 @@ class Feed {
    */
   #mediaKindOf(index) {
     const fh = this.#handles[index];
-    if (/\.(mp4|webm|mkv|mov|avi)$/i.test(fh.name)) {
-      return /** @type {const} */ ("video");
-    } else {
-      throw new Error(`unexpected media type: ${fh}`);
-    }
+    const kind = getMediaKind(fh);
+    return kind;
+  }
+
+  /**
+   * @template T
+   * @param {number} index
+   * @param {Record<MediaKind, () => T>} handler
+   * @returns {T}
+   */
+  #visitMedia(index, handler) {
+    const fh = this.#handles[index];
+    const kind = getMediaKindStrict(fh);
+    return handler[kind]();
   }
 
   /**
    * @param {number} index
    */
   async #mountMedia(index) {
-    switch (this.#mediaKindOf(index)) {
-      case "video":
-        {
-          const file = await this.#handles[index].getFile();
+    return this.#visitMedia(index, {
+      video: async () => {
+        const file = await this.#handles[index].getFile();
 
-          const video = document.createElement("video");
-          video.src = URL.createObjectURL(file);
-          video.loop = true;
+        const video = document.createElement("video");
+        video.src = URL.createObjectURL(file);
+        video.loop = true;
 
-          const update = () => {
-            this.#listenerProgress?.(video.currentTime / video.duration);
-            if (!video.paused) {
-              video.requestVideoFrameCallback(update);
-            }
-          };
+        const update = () => {
+          this.#listenerProgress?.(video.currentTime / video.duration);
+          if (!video.paused) {
+            video.requestVideoFrameCallback(update);
+          }
+        };
 
-          video.addEventListener("play", () => {
-            update();
-          });
+        video.addEventListener("play", () => {
+          update();
+        });
 
-          const item = this.#domItems[index];
-          item.appendChild(video);
-        }
-        break;
-    }
+        const item = this.#domItems[index];
+        item.appendChild(video);
+      },
+    });
   }
 
   /**
    * @param {number} index
    */
   #unmountMedia(index) {
-    switch (this.#mediaKindOf(index)) {
-      case "video":
-        {
-          const video = this.#domItems[index].querySelector("video");
-          if (video) {
-            URL.revokeObjectURL(video.src);
-            video.remove();
-          }
+    return this.#visitMedia(index, {
+      video: () => {
+        const video = this.#domItems[index].querySelector("video");
+        if (video) {
+          URL.revokeObjectURL(video.src);
+          video.remove();
         }
-        break;
-    }
+      },
+    });
   }
 
   /**
    * @param {number} index
    */
   #mediaAt(index) {
-    switch (this.#mediaKindOf(index)) {
-      case "video":
+    return this.#visitMedia(index, {
+      video: () => {
         return this.#domItems[index]?.querySelector("video");
-    }
+      },
+    });
   }
 
   /**
    * @param {number} index
    */
   #getMediaProgress(index) {
-    switch (this.#mediaKindOf(index)) {
-      case "video": {
+    return this.#visitMedia(index, {
+      video: () => {
         const video = this.#domItems[index]?.querySelector("video");
         if (video) {
           return video.currentTime / video.duration;
         } else {
           return 0;
         }
-      }
-    }
+      },
+    });
   }
 
   /**
    * @param {number} index
    */
   #pauseMedia(index) {
-    switch (this.#mediaKindOf(index)) {
-      case "video": {
+    return this.#visitMedia(index, {
+      video: () => {
         const video = this.#domItems[index]?.querySelector("video");
         return video?.pause();
-      }
-    }
+      },
+    });
   }
 
   /**
    * @param {number} index
    */
   #resumeMedia(index) {
-    switch (this.#mediaKindOf(index)) {
-      case "video": {
+    return this.#visitMedia(index, {
+      video: async () => {
         const video = this.#domItems[index]?.querySelector("video");
-        return video?.play();
-      }
-    }
+        return await video?.play();
+      },
+    });
   }
 
   /**
@@ -334,12 +364,12 @@ class Feed {
     });
   }
 
-  #onListClick() {
+  async #onListClick() {
     if (this.#playing) {
-      this.#mediaAt(this.#current)?.pause();
+      this.#pauseMedia(this.#current);
       this.#playing = false;
     } else {
-      this.#mediaAt(this.#current)?.play();
+      await this.#resumeMedia(this.#current);
       this.#playing = true;
     }
   }
@@ -393,8 +423,8 @@ class Feed {
       this.#observer.observe(child);
     }
 
-    this.#domList.addEventListener("click", () => {
-      this.#onListClick();
+    this.#domList.addEventListener("click", async () => {
+      await this.#onListClick();
     });
   }
 }

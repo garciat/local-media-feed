@@ -54,27 +54,21 @@ function getElementByIdStrict(id) {
  */
 
 /**
- * @param {FileSystemFileHandle} fh
- * @returns {MediaKind | null}
+ * @typedef {{kind: MediaKind, fh: FileSystemFileHandle}} MediaFile
  */
-function getMediaKind(fh) {
-  if (/\.(?:mp4|webm|ogv|ogg)$/i.test(fh.name)) {
-    return "video";
-  } else if (/\.(?:jpg|jpeg|png|gif|svg|webp|avif|bmp)$/i.test(fh.name)) {
-    return "image";
-  } else {
-    return null;
-  }
-}
 
 /**
  * @param {FileSystemFileHandle} fh
- * @returns {MediaKind}
+ * @returns {MediaFile | null}
  */
-function getMediaKindStrict(fh) {
-  const kind = getMediaKind(fh);
-  if (kind === null) throw new Error(`unknown media kind for: ${fh}`);
-  return kind;
+function parseMediaFile(fh) {
+  if (/\.(?:mp4|webm|ogv|ogg)$/i.test(fh.name)) {
+    return { kind: "video", fh };
+  } else if (/\.(?:jpg|jpeg|png|gif|svg|webp|avif|bmp)$/i.test(fh.name)) {
+    return { kind: "image", fh };
+  } else {
+    return null;
+  }
 }
 
 /** @type {number | undefined} */
@@ -129,11 +123,12 @@ getElementByIdStrict("open-folder")
 
     const t = performance.now();
 
-    const fileHandles = (await Array.fromAsync(findAllFiles(directory)))
-      .filter((fh) => getMediaKind(fh) !== null);
+    const mediaFiles = (await Array.fromAsync(findAllFiles(directory)))
+      .map((fh) => parseMediaFile(fh))
+      .filter((mf) => mf !== null);
 
     toast(
-      `Loaded ${fileHandles.length} files in ${
+      `Loaded ${mediaFiles.length} files in ${
         (performance.now() - t).toFixed(0)
       }ms`,
     );
@@ -142,7 +137,7 @@ getElementByIdStrict("open-folder")
 
     feed = new Feed({
       domList: getElementByIdStrict("media-list"),
-      handles: shuffle(fileHandles),
+      handles: shuffle(mediaFiles),
       listenerProgress: (progress) => {
         /** @type {HTMLElement | null} */
         const element = document.querySelector(".progress > .fill");
@@ -156,7 +151,7 @@ getElementByIdStrict("open-folder")
 class Feed {
   /** @type {Element} */
   #domList;
-  /** @type {FileSystemFileHandle[]} */
+  /** @type {MediaFile[]} */
   #handles;
   /** @type {IntersectionObserver} */
   #observer;
@@ -188,24 +183,13 @@ class Feed {
   }
 
   /**
-   * @param {number} index
-   */
-  #mediaKindOf(index) {
-    const fh = this.#handles[index];
-    const kind = getMediaKind(fh);
-    return kind;
-  }
-
-  /**
    * @template T
    * @param {number} index
    * @param {Record<MediaKind, () => T>} handler
    * @returns {T}
    */
   #visitMedia(index, handler) {
-    const fh = this.#handles[index];
-    const kind = getMediaKindStrict(fh);
-    return handler[kind]();
+    return handler[this.#handles[index].kind]();
   }
 
   /**
@@ -214,7 +198,7 @@ class Feed {
   async #mountMedia(index) {
     return this.#visitMedia(index, {
       video: async () => {
-        const file = await this.#handles[index].getFile();
+        const file = await this.#handles[index].fh.getFile();
 
         const video = document.createElement("video");
         video.src = URL.createObjectURL(file);
@@ -227,15 +211,13 @@ class Feed {
           }
         };
 
-        video.addEventListener("play", () => {
-          update();
-        });
+        video.addEventListener("play", update);
 
         const item = this.#domItems[index];
         item.appendChild(video);
       },
       image: async () => {
-        const file = await this.#handles[index].getFile();
+        const file = await this.#handles[index].fh.getFile();
 
         const img = document.createElement("img");
         img.src = URL.createObjectURL(file);
@@ -409,7 +391,7 @@ class Feed {
   /**
    * @param {{
    *  domList: Element,
-   *  handles: FileSystemFileHandle[],
+   *  handles: MediaFile[],
    *  listenerProgress: (progress: number) => void
    * }} params
    */

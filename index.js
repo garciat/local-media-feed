@@ -268,6 +268,18 @@ class Feed {
   }
 
   /**
+   * @param {number} index
+   */
+  #focusAt(index) {
+    const item = this.#domItems[index];
+
+    item?.scrollIntoView({
+      block: "start",
+      behavior: "instant",
+    });
+  }
+
+  /**
    * @param {number} target
    */
   #onActivateItemIndex = async (target) => {
@@ -325,25 +337,36 @@ class Feed {
   };
 
   #onViewResize = () => {
-    const item = this.#domItems[this.#current];
-
-    item?.scrollIntoView({
-      block: "start",
-      behavior: "instant",
-    });
+    this.#focusAt(this.#current);
   };
+
+  #createItemDOM() {
+    const item = document.createElement("li");
+    item.classList.add("item");
+    return item;
+  }
+
+  /**
+   * @param {MediaFile[]} files
+   */
+  #initialize(files) {
+    this.#current = 0;
+    this.#handles = files;
+    this.#domItems = this.#handles.map(() => this.#createItemDOM());
+    this.#domList.replaceChildren(...this.#domItems);
+    this.#domItems.forEach((item) => this.#observer.observe(item));
+    this.#focusAt(this.#current);
+  }
+
+  shuffle() {
+    this.#initialize(shuffle(this.#handles));
+  }
 
   dispose() {
     this.#observer.disconnect();
     this.#domList.replaceChildren();
     this.#domList.removeEventListener("click", this.#onListClick);
     window.visualViewport?.removeEventListener("resize", this.#onViewResize);
-  }
-
-  #createItemDOM() {
-    const item = document.createElement("li");
-    item.classList.add("item");
-    return item;
   }
 
   /**
@@ -355,14 +378,11 @@ class Feed {
    */
   constructor({ domList, handles, listenerProgress }) {
     this.#domList = domList;
-    this.#handles = handles;
+    this.#domItems = [];
+    this.#handles = [];
     this.#listenerProgress = listenerProgress;
 
-    // Initialization
-
-    this.#domItems = this.#handles.map(() => this.#createItemDOM());
-
-    this.#domList.replaceChildren(...this.#domItems);
+    // Events
 
     this.#observer = new IntersectionObserver(
       this.#onIntersectionObserved,
@@ -372,12 +392,12 @@ class Feed {
       },
     );
 
-    for (const child of this.#domItems) {
-      this.#observer.observe(child);
-    }
-
     this.#domList.addEventListener("click", this.#onListClick);
     window.visualViewport?.addEventListener("resize", this.#onViewResize);
+
+    // Initialization
+
+    this.#initialize(handles);
   }
 }
 
@@ -403,6 +423,13 @@ function main() {
       } else {
         await document.documentElement.requestFullscreen();
       }
+    });
+
+  getElementByIdStrict("shuffle")
+    .addEventListener("click", () => {
+      menu.hidePopover();
+
+      feed?.shuffle();
     });
 
   getElementByIdStrict("open-folder")
@@ -431,7 +458,7 @@ function main() {
 
       feed = new Feed({
         domList: getElementByIdStrict("media-list"),
-        handles: shuffle(mediaFiles),
+        handles: mediaFiles,
         listenerProgress: (progress) => {
           /** @type {HTMLElement | null} */
           const element = document.querySelector(".progress > .fill");

@@ -177,17 +177,31 @@ class Feed {
   /**
    * @param {number} index
    */
+  #videoAt(index) {
+    return this.#domItems[index].querySelector("video");
+  }
+
+  /**
+   * @param {number} index
+   */
+  #imageAt(index) {
+    return this.#domItems[index].querySelector("img");
+  }
+
+  /**
+   * @param {number} index
+   */
   #unmountMedia(index) {
     return this.#visitMedia(index, {
       video: () => {
-        const video = this.#domItems[index].querySelector("video");
+        const video = this.#videoAt(index);
         if (video) {
           URL.revokeObjectURL(video.src);
           video.remove();
         }
       },
       image: () => {
-        const img = this.#domItems[index].querySelector("img");
+        const img = this.#imageAt(index);
         if (img) {
           URL.revokeObjectURL(img.src);
           img.remove();
@@ -202,10 +216,10 @@ class Feed {
   #hasMountedMedia(index) {
     return this.#visitMedia(index, {
       video: () => {
-        return this.#domItems[index]?.querySelector("video") !== null;
+        return this.#videoAt(index) !== null;
       },
       image: () => {
-        return this.#domItems[index]?.querySelector("img") !== null;
+        return this.#imageAt(index) !== null;
       },
     });
   }
@@ -216,7 +230,7 @@ class Feed {
   #getMediaProgress(index) {
     return this.#visitMedia(index, {
       video: () => {
-        const video = this.#domItems[index]?.querySelector("video");
+        const video = this.#videoAt(index);
         if (video) {
           return video.currentTime / video.duration;
         } else {
@@ -235,8 +249,7 @@ class Feed {
   #pauseMedia(index) {
     return this.#visitMedia(index, {
       video: () => {
-        const video = this.#domItems[index]?.querySelector("video");
-        return video?.pause();
+        return this.#videoAt(index)?.pause();
       },
       image: () => {},
     });
@@ -248,8 +261,7 @@ class Feed {
   #resumeMedia(index) {
     return this.#visitMedia(index, {
       video: async () => {
-        const video = this.#domItems[index]?.querySelector("video");
-        return await video?.play();
+        return await this.#videoAt(index)?.play();
       },
       image: async () => {},
     });

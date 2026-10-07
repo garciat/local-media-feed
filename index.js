@@ -9,8 +9,6 @@
  * @returns {AsyncIterable<FileSystemFileHandle>}
  */
 async function* findAllFiles(directoryHandle) {
-  // assert(directoryHandle.kind === "directory");
-
   for await (const handle of directoryHandle.values()) {
     switch (handle.kind) {
       case "file":
@@ -23,6 +21,16 @@ async function* findAllFiles(directoryHandle) {
         throw new TypeError("unexpected type");
     }
   }
+}
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise(
+    (resolve) => setTimeout(() => resolve(undefined), ms),
+  );
 }
 
 /**
@@ -105,8 +113,12 @@ function toast(message, duration = 3000) {
   }, duration);
 }
 
+const menu = getElementByIdStrict("menu");
+
 getElementByIdStrict("toggle-fullscreen")
   .addEventListener("click", async () => {
+    menu.hidePopover();
+
     if (document.fullscreenElement) {
       await document.exitFullscreen();
     } else {
@@ -119,6 +131,8 @@ let feed;
 
 getElementByIdStrict("open-folder")
   .addEventListener("click", async () => {
+    menu.hidePopover();
+
     if (typeof window.showDirectoryPicker !== "function") {
       alert("Your browser does not support showDirectoryPicker()");
       return;
@@ -130,22 +144,10 @@ getElementByIdStrict("open-folder")
       startIn: "videos",
     });
 
-    const t = performance.now();
-
-    const fileHandles = (await arrayFromAsync(findAllFiles(directory)))
-      .filter((fh) => getMediaKind(fh) !== null);
-
-    toast(
-      `Loaded ${fileHandles.length} files in ${
-        (performance.now() - t).toFixed(0)
-      }ms`,
-    );
-
     feed?.dispose();
 
     feed = new Feed({
       domList: getElementByIdStrict("media-list"),
-      handles: shuffle(fileHandles),
       listenerProgress: (progress) => {
         /** @type {HTMLElement | null} */
         const element = document.querySelector(".progress > .fill");
@@ -154,12 +156,12 @@ getElementByIdStrict("open-folder")
         }
       },
     });
-  });
 
-window
-  .visualViewport
-  ?.addEventListener("resize", () => {
-    feed?.handleResize();
+    for await (const fh of findAllFiles(directory)) {
+      if (getMediaKind(fh) !== null) {
+        feed.addFile(fh);
+      }
+    }
   });
 
 class Feed {
@@ -194,15 +196,6 @@ class Feed {
     for (let i = a; i < b; i++) {
       yield i;
     }
-  }
-
-  /**
-   * @param {number} index
-   */
-  #mediaKindOf(index) {
-    const fh = this.#handles[index];
-    const kind = getMediaKind(fh);
-    return kind;
   }
 
   /**
@@ -383,6 +376,8 @@ class Feed {
     });
   }
 
+  #onIntersectionObservedBound = this.#onIntersectionObserved.bind(this);
+
   async #onListClick() {
     if (this.#playing) {
       this.#pauseMedia(this.#current);
@@ -393,7 +388,9 @@ class Feed {
     }
   }
 
-  handleResize() {
+  #onListClickBound = this.#onListClick.bind(this);
+
+  #onViewResize() {
     const item = this.#domItems[this.#current];
 
     item?.scrollIntoView({
@@ -402,10 +399,7 @@ class Feed {
     });
   }
 
-  dispose() {
-    this.#observer.disconnect();
-    this.#domList.replaceChildren();
-  }
+  #onViewResizeBound = this.#onViewResize.bind(this);
 
   #createItemDOM() {
     const item = document.createElement("li");
@@ -414,36 +408,57 @@ class Feed {
   }
 
   /**
+   * @param {FileSystemFileHandle} fh
+   */
+  addFile(fh) {
+    this.#handles.push(fh);
+
+    const item = this.#createItemDOM();
+    this.#domItems.push(item);
+    this.#domList.appendChild(item);
+    this.#observer.observe(item);
+
+    // TODO does not mount media under the fold
+  }
+
+  dispose() {
+    this.#observer.disconnect();
+    this.#domList.replaceChildren();
+    this.#domList.removeEventListener("click", this.#onListClickBound);
+    visualViewport?.removeEventListener("resize", this.#onViewResizeBound);
+  }
+
+  /**
    * @param {{
    *  domList: Element,
-   *  handles: FileSystemFileHandle[],
    *  listenerProgress: (progress: number) => void
    * }} params
    */
-  constructor({ domList, handles, listenerProgress }) {
+  constructor({ domList, listenerProgress }) {
     this.#domList = domList;
-    this.#handles = handles;
+    this.#handles = [];
     this.#listenerProgress = listenerProgress;
 
     // Initialization
 
-    this.#domItems = this.#handles.map(() => this.#createItemDOM());
+    this.#domList.replaceChildren();
 
-    this.#domList.replaceChildren(...this.#domItems);
+    this.#domItems = [];
 
-    this.#observer = new IntersectionObserver((entries) => {
-      this.#onIntersectionObserved(entries);
-    }, {
-      root: this.#domList,
-      threshold: 0.6,
-    });
+    this.#observer = new IntersectionObserver(
+      this.#onIntersectionObservedBound,
+      {
+        root: this.#domList,
+        threshold: 0.6,
+      },
+    );
 
     for (const child of this.#domItems) {
       this.#observer.observe(child);
     }
 
-    this.#domList.addEventListener("click", async () => {
-      await this.#onListClick();
-    });
+    this.#domList.addEventListener("click", this.#onListClickBound);
+
+    visualViewport?.addEventListener("resize", this.#onViewResizeBound);
   }
 }

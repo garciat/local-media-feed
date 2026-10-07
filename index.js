@@ -24,6 +24,77 @@ async function* findAllFiles(directoryHandle) {
 }
 
 /**
+ * Helper to create a cancellable timer promise.
+ * @param {number} ms
+ * @param {AbortSignal} signal
+ */
+function wait(ms, signal) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms, null);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve(null);
+    }, { once: true });
+  });
+}
+
+/**
+ * @template T
+ * @param {AsyncIterable<T>} items
+ * @param {number} size
+ * @param {number} timeout
+ * @returns {AsyncGenerator<T[], void, unknown>}
+ */
+async function* chunked(items, size, timeout) {
+  let chunk = [];
+  const iter = items[Symbol.asyncIterator]();
+  let pendingNext = iter.next();
+
+  try {
+    while (true) {
+      const ac = new AbortController();
+      const outcome = await Promise.race([
+        pendingNext,
+        wait(timeout, ac.signal),
+      ]);
+
+      ac.abort(); // Clear timeout if pendingNext resolved first
+
+      if (outcome === null) {
+        // Timeout expired: flush buffered items if any
+        if (chunk.length > 0) {
+          yield chunk;
+          chunk = [];
+        }
+      } else {
+        // pendingNext resolved
+        if (outcome.done) {
+          if (chunk.length > 0) {
+            yield chunk;
+          }
+          break;
+        }
+
+        chunk.push(outcome.value);
+
+        if (chunk.length >= size) {
+          yield chunk;
+          chunk = [];
+        }
+
+        // Fetch the next item only after consumption
+        pendingNext = iter.next();
+      }
+    }
+  } finally {
+    // Ensure iterator cleanup if caller breaks/returns early
+    if (typeof iter.return === "function") {
+      await iter.return();
+    }
+  }
+}
+
+/**
  * @param {number} ms
  * @returns {Promise<void>}
  */
@@ -149,6 +220,8 @@ getElementByIdStrict("open-folder")
       startIn: "videos",
     });
 
+    const startT = performance.now();
+
     feed?.dispose();
 
     feed = new Feed({
@@ -162,11 +235,15 @@ getElementByIdStrict("open-folder")
       },
     });
 
-    for await (const fh of findAllFiles(directory)) {
-      if (getMediaKind(fh) !== null) {
-        feed.addFile(fh);
-      }
+    for await (const chunk of chunked(findAllFiles(directory), 100, 100)) {
+      feed.addFiles(chunk.filter((fh) => getMediaKind(fh) !== null));
     }
+
+    toast(
+      `Loaded ${feed.count} files in ${
+        (performance.now() - startT).toFixed(0)
+      }ms`,
+    );
   });
 
 class Feed {
@@ -420,17 +497,26 @@ class Feed {
   }
 
   /**
-   * @param {FileSystemFileHandle} fh
+   * @param {FileSystemFileHandle[]} files
    */
-  addFile(fh) {
-    this.#handles.push(fh);
+  addFiles(files) {
+    const frag = document.createDocumentFragment();
 
-    const item = this.#createItemDOM();
-    this.#domItems.push(item);
-    this.#domList.appendChild(item);
-    this.#observer.observe(item);
+    for (const fh of files) {
+      this.#handles.push(fh);
+      const item = this.#createItemDOM();
+      this.#domItems.push(item);
+      frag.appendChild(item);
+      this.#observer.observe(item);
+    }
+
+    this.#domList.appendChild(frag);
 
     // TODO does not mount media under the fold
+  }
+
+  get count() {
+    return this.#handles.length;
   }
 
   shuffle() {

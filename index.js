@@ -129,6 +129,11 @@ getElementByIdStrict("toggle-fullscreen")
 /** @type {Feed | undefined} */
 let feed;
 
+getElementByIdStrict("shuffle")
+  .addEventListener("click", () => {
+    feed?.shuffle();
+  });
+
 getElementByIdStrict("open-folder")
   .addEventListener("click", async () => {
     menu.hidePopover();
@@ -390,13 +395,20 @@ class Feed {
 
   #onListClickBound = this.#onListClick.bind(this);
 
-  #onViewResize() {
-    const item = this.#domItems[this.#current];
+  /**
+   * @param {number} index
+   */
+  #focusAt(index) {
+    const item = this.#domItems[index];
 
     item?.scrollIntoView({
       block: "start",
       behavior: "instant",
     });
+  }
+
+  #onViewResize() {
+    this.#focusAt(this.#current);
   }
 
   #onViewResizeBound = this.#onViewResize.bind(this);
@@ -419,6 +431,15 @@ class Feed {
     this.#observer.observe(item);
 
     // TODO does not mount media under the fold
+  }
+
+  shuffle() {
+    this.#handles = shuffle(this.#handles);
+    this.#domItems = this.#handles.map(() => this.#createItemDOM());
+    this.#domList.replaceChildren(...this.#domItems);
+    this.#domItems.forEach((item) => this.#observer.observe(item));
+    this.#current = 0;
+    this.#focusAt(this.#current);
   }
 
   dispose() {

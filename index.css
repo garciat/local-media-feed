@@ -121,7 +121,7 @@ body {
   inset: auto auto 2rem 50%;
   transform: translateX(-50%);
   padding: .75rem 1rem;
-  border-radius: 999px;
+  border-radius: 1rem;
   background: rgb(32 32 32 / .95);
   color: white;
   border: none;

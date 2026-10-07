@@ -71,82 +71,28 @@ function parseMediaFile(fh) {
   }
 }
 
-/** @type {number | undefined} */
-let toastTimeout;
+const toast = (() => {
+  /** @type {number | undefined} */
+  let toastTimeout;
 
-/**
- * @param {string} message
- * @param {number} duration
- */
-function toast(message, duration = 3000) {
-  clearTimeout(toastTimeout);
+  /**
+   * @param {string} message
+   * @param {number} duration
+   */
+  function toast(message, duration = 3000) {
+    clearTimeout(toastTimeout);
 
-  const element = getElementByIdStrict("toast");
-  element.textContent = message;
-  element.showPopover();
+    const element = getElementByIdStrict("toast");
+    element.textContent = message;
+    element.showPopover();
 
-  toastTimeout = setTimeout(() => {
-    element.hidePopover();
-  }, duration);
-}
+    toastTimeout = setTimeout(() => {
+      element.hidePopover();
+    }, duration);
+  }
 
-const menu = getElementByIdStrict("menu");
-
-getElementByIdStrict("toggle-fullscreen")
-  .addEventListener("click", async () => {
-    menu.hidePopover();
-
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-    } else {
-      await document.documentElement.requestFullscreen();
-    }
-  });
-
-/** @type {Feed | undefined} */
-let feed;
-
-getElementByIdStrict("open-folder")
-  .addEventListener("click", async () => {
-    menu.hidePopover();
-
-    if (typeof window.showDirectoryPicker !== "function") {
-      alert("Your browser does not support showDirectoryPicker()");
-      return;
-    }
-
-    const directory = await window.showDirectoryPicker({
-      id: "local-media-feed",
-      mode: "read",
-      startIn: "videos",
-    });
-
-    const t = performance.now();
-
-    const mediaFiles = (await Array.fromAsync(findAllFiles(directory)))
-      .map((fh) => parseMediaFile(fh))
-      .filter((mf) => mf !== null);
-
-    toast(
-      `Loaded ${mediaFiles.length} files in ${
-        (performance.now() - t).toFixed(0)
-      }ms`,
-    );
-
-    feed?.dispose();
-
-    feed = new Feed({
-      domList: getElementByIdStrict("media-list"),
-      handles: shuffle(mediaFiles),
-      listenerProgress: (progress) => {
-        /** @type {HTMLElement | null} */
-        const element = document.querySelector(".progress > .fill");
-        if (element) {
-          element.style.width = `${100 * progress}%`;
-        }
-      },
-    });
-  });
+  return toast;
+})();
 
 class Feed {
   /** @type {Element} */
@@ -422,3 +368,67 @@ class Feed {
     window.visualViewport?.addEventListener("resize", this.#onViewResize);
   }
 }
+
+function main() {
+  if (typeof window.showDirectoryPicker !== "function") {
+    toast(
+      "Your browser does not support showDirectoryPicker(). This app will not work.",
+    );
+    return;
+  }
+
+  /** @type {Feed | undefined} */
+  let feed;
+
+  const menu = getElementByIdStrict("menu");
+
+  getElementByIdStrict("toggle-fullscreen")
+    .addEventListener("click", async () => {
+      menu.hidePopover();
+
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    });
+
+  getElementByIdStrict("open-folder")
+    .addEventListener("click", async () => {
+      menu.hidePopover();
+
+      const directory = await window.showDirectoryPicker({
+        id: "local-media-feed",
+        mode: "read",
+        startIn: "videos",
+      });
+
+      const startT = performance.now();
+
+      const mediaFiles = (await Array.fromAsync(findAllFiles(directory)))
+        .map((fh) => parseMediaFile(fh))
+        .filter((mf) => mf !== null);
+
+      toast(
+        `Loaded ${mediaFiles.length} files in ${
+          (performance.now() - startT).toFixed(0)
+        }ms`,
+      );
+
+      feed?.dispose();
+
+      feed = new Feed({
+        domList: getElementByIdStrict("media-list"),
+        handles: shuffle(mediaFiles),
+        listenerProgress: (progress) => {
+          /** @type {HTMLElement | null} */
+          const element = document.querySelector(".progress > .fill");
+          if (element) {
+            element.style.width = `${100 * progress}%`;
+          }
+        },
+      });
+    });
+}
+
+main();

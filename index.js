@@ -27,15 +27,6 @@ async function* findAllFiles(directoryHandle) {
 
 /**
  * @template T
- * @param {AsyncIterable<T>} iter
- * @returns {Promise<T[]>}
- */
-function arrayFromAsync(iter) {
-  return Array.fromAsync(iter);
-}
-
-/**
- * @template T
  * @param {T[]} array
  * @returns {T[]}
  */
@@ -105,8 +96,12 @@ function toast(message, duration = 3000) {
   }, duration);
 }
 
+const menu = getElementByIdStrict("menu");
+
 getElementByIdStrict("toggle-fullscreen")
   .addEventListener("click", async () => {
+    menu.hidePopover();
+
     if (document.fullscreenElement) {
       await document.exitFullscreen();
     } else {
@@ -119,6 +114,8 @@ let feed;
 
 getElementByIdStrict("open-folder")
   .addEventListener("click", async () => {
+    menu.hidePopover();
+
     if (typeof window.showDirectoryPicker !== "function") {
       alert("Your browser does not support showDirectoryPicker()");
       return;
@@ -132,7 +129,7 @@ getElementByIdStrict("open-folder")
 
     const t = performance.now();
 
-    const fileHandles = (await arrayFromAsync(findAllFiles(directory)))
+    const fileHandles = (await Array.fromAsync(findAllFiles(directory)))
       .filter((fh) => getMediaKind(fh) !== null);
 
     toast(

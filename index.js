@@ -153,12 +153,6 @@ getElementByIdStrict("open-folder")
     });
   });
 
-window
-  .visualViewport
-  ?.addEventListener("resize", () => {
-    feed?.handleResize();
-  });
-
 class Feed {
   /** @type {Element} */
   #domList;
@@ -336,7 +330,7 @@ class Feed {
   /**
    * @param {number} target
    */
-  async #onActivateItemIndex(target) {
+  #onActivateItemIndex = async (target) => {
     const prev = new Set(
       this.#getRange(this.#current)
         .filter((index) => this.#hasMountedMedia(index)),
@@ -366,21 +360,21 @@ class Feed {
     }
 
     this.#current = target;
-  }
+  };
 
   /**
    * @param {IntersectionObserverEntry[]} entries
    */
-  #onIntersectionObserved(entries) {
+  #onIntersectionObserved = (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
         const intersectingIndex = this.#domItems.indexOf(entry.target);
         this.#onActivateItemIndex(intersectingIndex);
       }
     });
-  }
+  };
 
-  async #onListClick() {
+  #onListClick = async () => {
     if (this.#playing) {
       this.#pauseMedia(this.#current);
       this.#playing = false;
@@ -388,20 +382,22 @@ class Feed {
       await this.#resumeMedia(this.#current);
       this.#playing = true;
     }
-  }
+  };
 
-  handleResize() {
+  #onViewResize = () => {
     const item = this.#domItems[this.#current];
 
     item?.scrollIntoView({
       block: "start",
       behavior: "instant",
     });
-  }
+  };
 
   dispose() {
     this.#observer.disconnect();
     this.#domList.replaceChildren();
+    this.#domList.removeEventListener("click", this.#onListClick);
+    window.visualViewport?.removeEventListener("resize", this.#onViewResize);
   }
 
   #createItemDOM() {
@@ -428,19 +424,19 @@ class Feed {
 
     this.#domList.replaceChildren(...this.#domItems);
 
-    this.#observer = new IntersectionObserver((entries) => {
-      this.#onIntersectionObserved(entries);
-    }, {
-      root: this.#domList,
-      threshold: 0.6,
-    });
+    this.#observer = new IntersectionObserver(
+      this.#onIntersectionObserved,
+      {
+        root: this.#domList,
+        threshold: 0.6,
+      },
+    );
 
     for (const child of this.#domItems) {
       this.#observer.observe(child);
     }
 
-    this.#domList.addEventListener("click", async () => {
-      await this.#onListClick();
-    });
+    this.#domList.addEventListener("click", this.#onListClick);
+    window.visualViewport?.addEventListener("resize", this.#onViewResize);
   }
 }

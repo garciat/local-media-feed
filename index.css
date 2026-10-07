@@ -140,24 +140,15 @@ body {
   gap: 2px;
   overflow-y: scroll;
 
-  /* prevent accidentally going back or triggering other swipe events */
   overscroll-behavior: contain;
-
-  /* hide scroll bar */
   scrollbar-width: none;
   -ms-overflow-style: none;
-
-  /* momentum scroll on iOS */
   -webkit-overflow-scrolling: touch;
 
-  /* disbable horizontal scroll for touch */
   touch-action: pan-y;
-
-  /* scroll snapping */
   scroll-snap-type: y mandatory;
 }
 
-/* hide scroll bar */
 #media-list::-webkit-scrollbar {
   display: none;
 }
@@ -166,18 +157,10 @@ body {
   width: 100%;
   min-height: 100dvh;
   flex-shrink: 0;
-
-  /* scroll snapping */
   scroll-snap-align: start;
-
-  /* maybe this will work in the future 🤷‍♂️ */
   scroll-snap-stop: always;
 }
 
-/*
-  The styling below is only for the decoration of this demo,
-  it has no impact on scrolling or scroll behavior
-*/
 #media-list {
   list-style: none;
   padding: 0;
